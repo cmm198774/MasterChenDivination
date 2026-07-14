@@ -39,3 +39,4 @@ dump.rdb
 课件/
 *.rdb
 test_scripts/
+feishu_bot.py
