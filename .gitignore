@@ -40,3 +40,4 @@ dump.rdb
 *.rdb
 test_scripts/
 feishu_bot.py
+docs/
