@@ -1,0 +1,11 @@
+#你好，我要在Server.py里面/chat里面添加一个功能，就是把陈大师的回复输出成音频，并且根据emotion判断音频输出的语气。
+1. 音频的调用方式可以参考test_qwen3_tts.py里面的方案
+2. emotion其实就是MyAgent.py里面AgentState里面定义的mood，由MOODS这个变量定义
+3. 音频的函数可以MyTools.py再定义一个async def get_voice(uid:str,text:str,mood:str,voice_id),这个函数要求可以异步执行，不阻塞主进程，三个入参text是需要转换的回答文字，uid是Master里面定义的self.user_id,mood就是Agent里面输出的result里面的qingxu这个字段,voice_id是指定音频的id。get_voice会生成一个音频文件（voice_id.wav），并且返回voice_id作为生成音频的标识
+4. get_voice生成的音频文件可以放到Sound目录下面user_id的子目录下面（user_id就是get_voice的入参uid）
+5. voice_id由两部分组成uid_精确到毫秒的时间戳
+6. 我希望能够使用FastAPI下面的BackgroundTasks，把get_voice放到后台运行
+7. 我希望的执行顺序是在/chat 函数中先执行Master.run获得res，然后再background_tasks.add_task(#在这里添加get_voice函数)，最后再把voice_id添加到res里面方便找到音频文件
+8. 测试方法也是你先写一个非fastapi的测试版本，看看res的输出是否正常，而且音频文件是否正常生成，再把方案添加到chat这个函数里面
+9. 我自己会用postman来测试效果
+

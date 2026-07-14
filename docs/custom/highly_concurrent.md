@@ -1,0 +1,6 @@
+#这是一个将陈大师这个程序系并发化的需求
+步骤一：对于Server.py部分master_instance.run的改造
+1）原先Master类在定义的时候就包括了self.user_id,现在我希望user_id作为run的一个参数，默认是default
+2）MyAgent里面的debug和warning信息里面也必须加上user_id的标识，方便调试的时候发现是哪个线程出现了问题
+3）/chat函数里面因该需要把user_id作为参数输入，然后被改成异步函数。/get_audio因该不需要改变，因为voice_id里面已经包括了user_id了
+4）测试的话用不同的user_id来post数据，看看不同的userid之间的消息是否会比较好的隔离开来

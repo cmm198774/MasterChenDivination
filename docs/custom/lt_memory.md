@@ -1,0 +1,7 @@
+我现在需要你再做一个sys_memory.py的模块，要求1.使用redis作为数据存储的工具把AgentState里面的信息存储在硬盘上面，2.使用user_id作为区分不同chat的主键，根据user_id从硬盘上面加载不同chat对应的AgentState 3.提供存储和调用的接口给create_agent_graph 4.修改server.py,启动FastAPI的时候应该也可以同时启动redit服务器
+
+测试过程
+1. 检查redit服务器是否能够正常启动
+2. 检查一下存储和加载数据的接口是否可以正常运行，并且尝试不同的user_id输入对话，看一下信息是否有效隔离
+3. 修改test_agent.py,看一下一个Agent保存在redit里面的数据是否可以被另外一个Agent正确加载（前提是user_id相同）
+4. server.py里面也做好对应的改动，改好之后server.py的测试由我自己来进行

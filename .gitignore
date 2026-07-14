@@ -1,0 +1,41 @@
+# 敏感配置
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 数据文件
+Sound/
+logs/
+
+# Redis
+redis-server/
+
+# IDE
+.vscode/
+.idea/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 参考资料
+html/
+
+# 测试脚本（可选，如果需要也可以上传）
+# test_scripts/
+dump.rdb
+.trae/
+课件/
+*.rdb
+test_scripts/
