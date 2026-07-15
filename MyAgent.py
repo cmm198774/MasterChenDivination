@@ -318,7 +318,7 @@ def create_agent_graph(
     # 节点 1: 情绪检测节点
     # 功能: 分析用户输入，判断用户情绪状态
     # ------------------------------------------------------------
-    def detect_mood(state: AgentState) -> dict:
+    def detect_mood(state: AgentState, config: dict) -> dict:
         """
         情绪检测节点函数。
 
@@ -331,6 +331,7 @@ def create_agent_graph(
             dict: 更新后的状态，包含检测到的情绪
                   - mood (str): 检测到的情绪，如 "default", "upbeat", "angry" 等
         """
+        user_id = config.get("configurable", {}).get("thread_id", "?")
         if not enable_mood_detection:
             return {"mood": "default"}
 
@@ -364,17 +365,17 @@ def create_agent_graph(
             if mood not in MOODS:
                 mood = "default"
             elapsed = time.time() - t0
-            logger.debug(f"情绪识别: {mood}, 耗时: {elapsed:.1f}s")
+            logger.debug(f"[{user_id}] 情绪识别: {mood}, 耗时: {elapsed:.1f}s")
             return {"mood": mood}
         except Exception as e:
-            logger.error(f"情绪识别失败: {e}")
+            logger.error(f"[{user_id}] 情绪识别失败: {e}")
             return {"mood": "default"}
 
     # ------------------------------------------------------------
     # 节点 2: 工具调用节点（带超时控制）
     # 功能: 执行工具调用，支持并行执行和超时控制
     # ------------------------------------------------------------
-    def tool_node(state: AgentState) -> dict:
+    def tool_node(state: AgentState, config: dict) -> dict:
         """
         工具调用节点函数。
 
@@ -384,6 +385,7 @@ def create_agent_graph(
         Returns:
             dict: 包含工具执行结果的状态更新
         """
+        user_id = config.get("configurable", {}).get("thread_id", "?")
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         messages = list(state["messages"])
@@ -408,7 +410,7 @@ def create_agent_graph(
             """
             tool_name = tool_call.get('name', '') if isinstance(tool_call, dict) else getattr(tool_call, 'name', '')
             tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
-            logger.debug(f"调用工具: {tool_name}, 参数: {tool_args}")
+            logger.debug(f"[{user_id}] 调用工具: {tool_name}, 参数: {tool_args}")
 
             # 找到对应的工具并执行
             tool = next((t for t in tool_list if t.name == tool_name), None)
@@ -420,17 +422,17 @@ def create_agent_graph(
             try:
                 result = call_with_timeout(tool.invoke, timeout=tool_timeout, input=tool_args)
                 elapsed = time.time() - t0
-                logger.debug(f"工具 {tool_name} 完成，耗时: {elapsed:.1f}s, 结果: {result}")
+                logger.debug(f"[{user_id}] 工具 {tool_name} 完成，耗时: {elapsed:.1f}s, 结果: {result}")
                 tid = tool_call.get('id', '') if isinstance(tool_call, dict) else getattr(tool_call, 'id', '')
                 return ToolMessage(content=str(result), tool_call_id=tid)
             except TimeoutError:
                 elapsed = time.time() - t0
-                logger.warning(f"工具 {tool_name} 超时，耗时: {elapsed:.1f}s")
+                logger.warning(f"[{user_id}] 工具 {tool_name} 超时，耗时: {elapsed:.1f}s")
                 tid = tool_call.get('id', '') if isinstance(tool_call, dict) else getattr(tool_call, 'id', '')
                 return ToolMessage(content=f"工具 {tool_name} 执行超时 ({tool_timeout} 秒)", tool_call_id=tid)
             except Exception as e:
                 elapsed = time.time() - t0
-                logger.error(f"工具 {tool_name} 出错，耗时: {elapsed:.1f}s: {e}")
+                logger.error(f"[{user_id}] 工具 {tool_name} 出错，耗时: {elapsed:.1f}s: {e}")
                 tid = tool_call.get('id', '') if isinstance(tool_call, dict) else getattr(tool_call, 'id', '')
                 return ToolMessage(content=f"工具 {tool_name} 执行错误: {str(e)[:100]}", tool_call_id=tid)
 
@@ -449,7 +451,7 @@ def create_agent_graph(
     # 功能: 处理 messages 的增量，合并到 compact_messages
     #       不删除 messages，只维护 compact_messages 作为压缩后的上下文
     # ------------------------------------------------------------
-    def compact_node(state: AgentState) -> dict:
+    def compact_node(state: AgentState, config: dict) -> dict:
         """
         消息压缩节点函数。
 
@@ -462,6 +464,7 @@ def create_agent_graph(
         Returns:
             dict: 更新 compact_messages 和 compacted_count
         """
+        user_id = config.get("configurable", {}).get("thread_id", "?")
         messages = list(state["messages"])
         compact_messages = list(state.get("compact_messages", []))
         compacted_count = state.get("compacted_count", 0)
@@ -470,26 +473,26 @@ def create_agent_graph(
         new_messages = messages[compacted_count:]
 
         if not new_messages:
-            logger.debug("compact_node: 没有增量消息")
+            logger.debug(f"[{user_id}] compact_node: 没有增量消息")
             return {}
 
-        logger.debug(f"compact_node: 增量消息 {len(new_messages)} 条, 已有 compact_messages {len(compact_messages)} 条")
+        logger.debug(f"[{user_id}] compact_node: 增量消息 {len(new_messages)} 条, 已有 compact_messages {len(compact_messages)} 条")
 
         # 合并
         combined = compact_messages + new_messages
         total_tokens = count_tokens(combined)
-        logger.debug(f"compact_node: 合并后 token 数: {total_tokens}, 阈值: {memory_token_limit}")
+        logger.debug(f"[{user_id}] compact_node: 合并后 token 数: {total_tokens}, 阈值: {memory_token_limit}")
 
         if total_tokens <= memory_token_limit:
             # 不超阈值，直接合并
-            logger.debug("compact_node: 不超阈值，直接合并")
+            logger.debug(f"[{user_id}] compact_node: 不超阈值，直接合并")
             return {
                 "compact_messages": combined,
                 "compacted_count": len(messages),
             }
         else:
             # 超阈值，压缩
-            logger.debug("compact_node: 超过阈值，开始压缩")
+            logger.debug(f"[{user_id}] compact_node: 超过阈值，开始压缩")
             summary_text = summarize_messages(combined, llm, max_tokens=memory_token_limit)
 
             if summary_text:
@@ -498,7 +501,7 @@ def create_agent_graph(
                 new_compact = [summary_msg]
             else:
                 # 总结失败，降级为截断：保留最近的消息
-                logger.warning("compact_node: 总结失败，降级为截断")
+                logger.warning(f"[{user_id}] compact_node: 总结失败，降级为截断")
                 new_compact = []
                 current_tokens = 0
                 for msg in reversed(combined):
@@ -508,7 +511,7 @@ def create_agent_graph(
                     new_compact.insert(0, msg)
                     current_tokens += msg_tokens
 
-            logger.debug(f"compact_node: 压缩完成，compact_messages: {len(new_compact)} 条")
+            logger.debug(f"[{user_id}] compact_node: 压缩完成，compact_messages: {len(new_compact)} 条")
             return {
                 "compact_messages": new_compact,
                 "compacted_count": len(messages),
@@ -518,7 +521,7 @@ def create_agent_graph(
     # 节点 4: 模型调用节点
     # 功能: 调用 LLM 生成回复，使用 compact_messages 作为上下文
     # ------------------------------------------------------------
-    def call_model(state: AgentState) -> dict:
+    def call_model(state: AgentState, config: dict) -> dict:
         """
         模型调用节点函数。
 
@@ -534,6 +537,7 @@ def create_agent_graph(
             dict: 包含模型回复的状态更新
                   - messages (List[AIMessage]): 模型生成的回复消息
         """
+        user_id = config.get("configurable", {}).get("thread_id", "?")
         # 使用 compact_messages 作为上下文，而不是完整 messages
         compact_messages = state.get("compact_messages", [])
         mood = state.get("mood", "default")
@@ -562,9 +566,9 @@ def create_agent_graph(
                 input=messages,
             )
             elapsed = time.time() - t0
-            logger.debug(f"大模型调用耗时: {elapsed:.1f}s")
+            logger.debug(f"[{user_id}] 大模型调用耗时: {elapsed:.1f}s")
             if hasattr(response, 'tool_calls') and response.tool_calls:
-                logger.debug(f"检测到 tool_calls: {[tc['name'] for tc in response.tool_calls]}")
+                logger.debug(f"[{user_id}] 检测到 tool_calls: {[tc['name'] for tc in response.tool_calls]}")
 
             # 标准化 content 为字符串（处理不同模型的输出格式）
             response.content = _extract_text_content(response.content)
@@ -573,12 +577,12 @@ def create_agent_graph(
             return {"messages": [response]}
         except TimeoutError:
             elapsed = time.time() - t0
-            logger.warning(f"大模型调用超时 ({elapsed:.1f}s)")
+            logger.warning(f"[{user_id}] 大模型调用超时 ({elapsed:.1f}s)")
             timeout_msg = AIMessage(content="API 调用超时，请稍后重试。")
             return {"messages": [timeout_msg]}
         except Exception as e:
             elapsed = time.time() - t0
-            logger.error(f"大模型调用失败 ({elapsed:.1f}s): {e}")
+            logger.error(f"[{user_id}] 大模型调用失败 ({elapsed:.1f}s): {e}")
             error_msg = AIMessage(content=f"API 调用失败: {str(e)}")
             return {"messages": [error_msg]}
 

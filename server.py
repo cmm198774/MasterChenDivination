@@ -1,5 +1,6 @@
 import os
 import subprocess
+import time
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
 
     # 创建 Master 实例（使用 RedisSaver）
     global_logger.info("创建 Master 实例...")
-    master_instance = Master(user_id="default")
+    master_instance = Master()
     global_logger.info("Master 实例创建完成")
 
     yield
@@ -50,9 +51,7 @@ from sys_memory import RedisSaver
 
 
 class Master:
-    def __init__(self, user_id: str = "default"):
-        self.user_id = user_id
-
+    def __init__(self):
         # 创建 RedisSaver
         redis_saver = RedisSaver(redis_url=REDIS_URL)
 
@@ -69,14 +68,14 @@ class Master:
             checkpointer=redis_saver,  # 使用 Redis 持久化
         )
 
-    def run(self, query: str):
-        global_logger.info(f"收到查询: {query}")
+    def run(self, query: str, user_id: str = "default"):
+        global_logger.info(f"[{user_id}] 收到查询：{query}")
 
         # 用 graph.invoke 调用（情绪检测在 graph 内部自动完成）
-        global_logger.debug("开始 agent 推理...")
+        global_logger.debug(f"[{user_id}] 开始 agent 推理...")
 
         # 添加 config 参数，指定 thread_id
-        config = {"configurable": {"thread_id": self.user_id}}
+        config = {"configurable": {"thread_id": user_id}}
 
         # 添加 system prompt 作为第一条消息（只在第一次对话时添加）
         # MemorySaver 会保存历史，所以后续对话会自动包含之前的消息
@@ -87,14 +86,17 @@ class Master:
         }, config=config)
 
         # 调试：记录保存的消息数量
-        global_logger.debug(f"当前保存的消息数: {len(result.get('messages', []))}")
+        global_logger.debug(f"[{user_id}] 当前保存的消息数：{len(result.get('messages', []))}")
         for i, msg in enumerate(result.get('messages', [])[-5:]):  # 仅显示最后5条消息
             content_str = str(msg.content)[:50] if hasattr(msg, 'content') else 'N/A'
-            global_logger.debug(f"  [{i}] {type(msg).__name__}: {content_str}...")
+            global_logger.debug(f"[{user_id}]   [{i}] {type(msg).__name__}: {content_str}...")
 
         qingxu = result.get("mood", "default")
-        global_logger.debug(f"情绪: {qingxu}")
-        last_message = result["messages"][-1]
+        global_logger.debug(f"[{user_id}] 情绪：{qingxu}")
+        messages = result.get("messages", [])
+        if not messages:
+            return {"input": query, "output": "No response generated", "qingxu": qingxu}
+        last_message = messages[-1]
         return {"input": query, "output": last_message.content, "qingxu": qingxu}
 
 
@@ -107,18 +109,17 @@ def read_root():
 
 
 @app.post("/chat")
-def chat(query: str):
+async def chat(query: str, user_id: str = "default"):
     # 使用 lifespan 中创建的 master_instance
     if master_instance is None:
         return {"error": "Master 实例未初始化"}
 
     # Run agent
-    res = master_instance.run(query)
+    res = master_instance.run(query, user_id=user_id)
 
     # Generate voice_id and add to response
-    import time
     timestamp_ms = int(time.time() * 1000)
-    voice_id = f"{master_instance.user_id}_{timestamp_ms}"
+    voice_id = f"{user_id}_{timestamp_ms}"
     res["voice_id"] = voice_id
 
     return res
