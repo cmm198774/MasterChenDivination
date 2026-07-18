@@ -17,6 +17,7 @@ venv/
 # 数据文件
 Sound/
 logs/
+*.log
 
 # Redis
 redis-server/

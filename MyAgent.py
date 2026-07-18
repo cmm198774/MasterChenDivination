@@ -318,7 +318,7 @@ def create_agent_graph(
     # 节点 1: 情绪检测节点
     # 功能: 分析用户输入，判断用户情绪状态
     # ------------------------------------------------------------
-    def detect_mood(state: AgentState, config: dict) -> dict:
+    def detect_mood(state: AgentState, config: dict = None) -> dict:
         """
         情绪检测节点函数。
 
@@ -331,7 +331,7 @@ def create_agent_graph(
             dict: 更新后的状态，包含检测到的情绪
                   - mood (str): 检测到的情绪，如 "default", "upbeat", "angry" 等
         """
-        user_id = config.get("configurable", {}).get("thread_id", "?")
+        user_id = (config or {}).get("configurable", {}).get("thread_id", "?")
         if not enable_mood_detection:
             return {"mood": "default"}
 
@@ -375,7 +375,7 @@ def create_agent_graph(
     # 节点 2: 工具调用节点（带超时控制）
     # 功能: 执行工具调用，支持并行执行和超时控制
     # ------------------------------------------------------------
-    def tool_node(state: AgentState, config: dict) -> dict:
+    def tool_node(state: AgentState, config: dict = None) -> dict:
         """
         工具调用节点函数。
 
@@ -385,7 +385,7 @@ def create_agent_graph(
         Returns:
             dict: 包含工具执行结果的状态更新
         """
-        user_id = config.get("configurable", {}).get("thread_id", "?")
+        user_id = (config or {}).get("configurable", {}).get("thread_id", "?")
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         messages = list(state["messages"])
@@ -451,7 +451,7 @@ def create_agent_graph(
     # 功能: 处理 messages 的增量，合并到 compact_messages
     #       不删除 messages，只维护 compact_messages 作为压缩后的上下文
     # ------------------------------------------------------------
-    def compact_node(state: AgentState, config: dict) -> dict:
+    def compact_node(state: AgentState, config: dict = None) -> dict:
         """
         消息压缩节点函数。
 
@@ -464,7 +464,7 @@ def create_agent_graph(
         Returns:
             dict: 更新 compact_messages 和 compacted_count
         """
-        user_id = config.get("configurable", {}).get("thread_id", "?")
+        user_id = (config or {}).get("configurable", {}).get("thread_id", "?")
         messages = list(state["messages"])
         compact_messages = list(state.get("compact_messages", []))
         compacted_count = state.get("compacted_count", 0)
@@ -521,7 +521,7 @@ def create_agent_graph(
     # 节点 4: 模型调用节点
     # 功能: 调用 LLM 生成回复，使用 compact_messages 作为上下文
     # ------------------------------------------------------------
-    def call_model(state: AgentState, config: dict) -> dict:
+    def call_model(state: AgentState, config: dict = None) -> dict:
         """
         模型调用节点函数。
 
@@ -537,7 +537,7 @@ def create_agent_graph(
             dict: 包含模型回复的状态更新
                   - messages (List[AIMessage]): 模型生成的回复消息
         """
-        user_id = config.get("configurable", {}).get("thread_id", "?")
+        user_id = (config or {}).get("configurable", {}).get("thread_id", "?")
         # 使用 compact_messages 作为上下文，而不是完整 messages
         compact_messages = state.get("compact_messages", [])
         mood = state.get("mood", "default")

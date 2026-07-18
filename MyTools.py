@@ -468,7 +468,7 @@ def _call_tts(text: str, voice: str, instruction: str | None) -> bytes | None:
 
 
 # 生成语音音频（Qwen3-TTS），长文本自动分段合成后拼接
-async def get_voice(text: str, mood: str, voice: str = TTS_VOICE) -> bytes:
+def get_voice(text: str, mood: str, voice: str = TTS_VOICE) -> bytes:
     """
     Generate voice audio using Qwen3-TTS.
     长文本自动按句子边界切分，分段合成后拼接。

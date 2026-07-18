@@ -49,6 +49,13 @@ QDRANT_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loca
 # Redis 配置
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
+# 线程池配置
+THREAD_POOL_SIZE = int(os.getenv("THREAD_POOL_SIZE", "20"))
+
 # 超时配置（秒）
 CHAT_TIMEOUT = int(os.getenv("CHAT_TIMEOUT", "120"))
 VOICE_TIMEOUT = int(os.getenv("VOICE_TIMEOUT", "60"))
+
+# 飞书机器人并发配置
+FEISHU_MAX_USERS = int(os.getenv("FEISHU_MAX_USERS", "50"))  # 最大并发用户数
+FEISHU_USER_TIMEOUT = int(os.getenv("FEISHU_USER_TIMEOUT", "300"))  # 用户不活跃超时（秒）

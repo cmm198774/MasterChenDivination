@@ -189,7 +189,18 @@ class RedisSaver(BaseCheckpointSaver):
         for key in self.client.scan_iter(f"{writes_prefix}:*"):
             writes_data = self.client.get(key)
             if writes_data:
-                pending_writes.extend(pickle.loads(writes_data))
+                loaded_writes = pickle.loads(writes_data)
+                # 兼容旧格式（2-tuple）和新格式（3-tuple）
+                for write in loaded_writes:
+                    if len(write) == 2:
+                        # 旧格式: (channel, value)，需要提取 task_id 从 key
+                        # key 格式: prefix:writes:thread_id:checkpoint_id:task_id
+                        task_id = key.decode("utf-8").split(":")[-1]
+                        channel, value = write
+                        pending_writes.append((task_id, channel, value))
+                    else:
+                        # 新格式: (task_id, channel, value)
+                        pending_writes.append(write)
 
         # 构建 config
         result_config = {
@@ -293,14 +304,17 @@ class RedisSaver(BaseCheckpointSaver):
 
         key = self._get_writes_key(thread_id, checkpoint_id, task_id)
 
+        # 将 writes 转换为 3-tuple 格式: (task_id, channel, value)
+        writes_with_task_id = [(task_id, channel, value) for channel, value in writes]
+
         # 追加写入
         existing = self.client.get(key)
         if existing:
             current_writes = pickle.loads(existing)
-            current_writes.extend(writes)
+            current_writes.extend(writes_with_task_id)
             self.client.set(key, pickle.dumps(current_writes))
         else:
-            self.client.set(key, pickle.dumps(list(writes)))
+            self.client.set(key, pickle.dumps(writes_with_task_id))
 
     # ------------------------------------------------------------
     # list

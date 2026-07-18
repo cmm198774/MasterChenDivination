@@ -1,6 +1,9 @@
+import asyncio
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -18,12 +21,16 @@ from config import (
     QDRANT_COLLECTION,
     SERVER_HOST,
     SERVER_PORT,
+    THREAD_POOL_SIZE,
 )
 # 全局 logger（启动阶段使用，清空之前的日志）
 global_logger = setup_global_logger(clear_previous_logs=True)
 
 # 全局 Master 实例
 master_instance = None
+
+# 全局线程池
+executor = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
 
 
 @asynccontextmanager
@@ -114,8 +121,12 @@ async def chat(query: str, user_id: str = "default"):
     if master_instance is None:
         return {"error": "Master 实例未初始化"}
 
-    # Run agent
-    res = master_instance.run(query, user_id=user_id)
+    # 在线程池中执行同步的 run()
+    loop = asyncio.get_running_loop()
+    res = await loop.run_in_executor(
+        executor,
+        partial(master_instance.run, query, user_id=user_id)
+    )
 
     # Generate voice_id and add to response
     timestamp_ms = int(time.time() * 1000)
@@ -143,8 +154,12 @@ async def get_audio(voice_id: str, text: str, mood: str = "default"):
 
     global_logger.info(f"生成音频: voice_id={voice_id}, mood={mood}, text={text[:50]}...")
 
-    # 调用 get_voice 生成音频
-    audio_bytes = await get_voice(text=text, mood=mood)
+    # 在线程池中执行同步的 get_voice()
+    loop = asyncio.get_running_loop()
+    audio_bytes = await loop.run_in_executor(
+        executor,
+        partial(get_voice, text, mood)
+    )
 
     if audio_bytes is None:
         raise HTTPException(status_code=500, detail="Failed to generate audio")

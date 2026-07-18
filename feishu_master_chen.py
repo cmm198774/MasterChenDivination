@@ -3,9 +3,16 @@
 通过飞书 WebSocket 长连接接收消息，转发到 server.py 处理，
 返回文本和语音回复。
 
-核心流程：
-1. WebSocket 接收飞书消息 → 入队
-2. Worker 顺序处理：POST /chat → 发送文本 → GET /get_audio → 转换 OPUS → 发送语音
+核心架构（方案 A：线程池 + 每用户队列）：
+1. WebSocket 接收飞书消息 → 按用户路由到对应队列
+2. 每个用户有独立的 Worker 线程，保证消息顺序处理
+3. 线程池限制最大并发用户数（FEISHU_MAX_USERS，默认 50）
+4. 用户不活跃超时后自动清理（FEISHU_USER_TIMEOUT，默认 300 秒）
+
+优势：
+- 同一用户的消息按顺序处理（保持对话上下文）
+- 不同用户的消息并行处理（提高并发能力）
+- 线程数可控（防止资源爆炸）
 """
 import os
 import sys
@@ -45,7 +52,11 @@ from config import (
     SERVER_PORT,
     CHAT_TIMEOUT,
     VOICE_TIMEOUT,
+    FEISHU_MAX_USERS,
+    FEISHU_USER_TIMEOUT,
 )
+from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 
 # ============ 配置 ============
 APP_ID = FEISHU_APP_ID
@@ -54,7 +65,15 @@ APP_SECRET = FEISHU_APP_SECRET
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
 # ============ 全局变量 ============
-message_queue = queue.Queue()
+# 每用户队列系统
+user_queues = defaultdict(queue.Queue)  # {sender_id: Queue}
+user_last_active = {}  # {sender_id: timestamp}
+user_processing_lock = threading.Lock()  # 保护用户状态
+active_workers = set()  # 正在处理的用户集合
+
+# 线程池（限制并发数）
+worker_pool = None  # 在 main() 中初始化
+
 server_process = None
 feishu_client = None
 
@@ -66,9 +85,9 @@ def start_server():
     project_dir = os.path.dirname(os.path.abspath(__file__))
     server_script = os.path.join(project_dir, "server.py")
 
-    # 使用 conda 环境运行
+    # 使用当前 Python 解释器运行（兼容不同环境）
     server_process = subprocess.Popen(
-        ["conda", "run", "-n", "py310", "python", server_script],
+        [sys.executable, server_script],
         cwd=project_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -237,18 +256,42 @@ def process_message(sender_id: str, text: str):
         send_audio_to_feishu(sender_id, file_key)
 
 
-def worker():
-    """Worker 线程：顺序处理消息队列"""
-    print("[Master Chen] Worker 启动")
+def user_worker(sender_id: str):
+    """
+    用户专属 Worker：处理单个用户的所有消息
+    保证同一用户的消息按顺序处理
+    """
+    print(f"[Master Chen] 用户 Worker 启动: {sender_id[:10]}...")
+
     while True:
         try:
-            sender_id, text = message_queue.get(timeout=1)
+            # 从该用户的队列取消息（阻塞等待）
+            text = user_queues[sender_id].get(timeout=FEISHU_USER_TIMEOUT)
+
+            # 更新活跃时间
+            with user_processing_lock:
+                user_last_active[sender_id] = time.time()
+
+            # 处理消息
             process_message(sender_id, text)
-            message_queue.task_done()
+
+            # 标记任务完成
+            user_queues[sender_id].task_done()
+
         except queue.Empty:
-            continue
+            # 超时，清理该用户的 Worker
+            print(f"[Master Chen] 用户不活跃，清理 Worker: {sender_id[:10]}...")
+            with user_processing_lock:
+                if sender_id in active_workers:
+                    active_workers.remove(sender_id)
+                if sender_id in user_queues:
+                    del user_queues[sender_id]
+                if sender_id in user_last_active:
+                    del user_last_active[sender_id]
+            break
+
         except Exception as e:
-            print(f"[Master Chen] Worker 异常: {e}")
+            print(f"[Master Chen] 用户 Worker 异常: {sender_id[:10]}... - {e}")
 
 
 # ============ 飞书事件处理 ============
@@ -270,19 +313,39 @@ def on_message_event(data: P2ImMessageReceiveV1) -> None:
     if not text:
         return
 
-    print(f"[Master Chen] 收到消息: sender={sender_id}, text={text[:50]}...")
+    print(f"[Master Chen] 收到消息: sender={sender_id[:10]}..., text={text[:50]}...")
 
-    # 入队
-    message_queue.put((sender_id, text))
+    # 检查并发限制
+    with user_processing_lock:
+        current_users = len(active_workers)
+
+    if current_users >= FEISHU_MAX_USERS:
+        print(f"[Master Chen] 并发已满（{current_users}/{FEISHU_MAX_USERS}），消息被丢弃")
+        send_text_to_feishu(sender_id, "当前用户太多，请稍后再试")
+        return
+
+    # 首次消息：启动用户专属 Worker
+    with user_processing_lock:
+        if sender_id not in active_workers:
+            active_workers.add(sender_id)
+            user_last_active[sender_id] = time.time()
+
+            # 提交到线程池
+            worker_pool.submit(user_worker, sender_id)
+            print(f"[Master Chen] 启动用户 Worker: {sender_id[:10]}... (当前并发: {len(active_workers)})")
+
+    # 放入该用户的队列
+    user_queues[sender_id].put(text)
 
 
 # ============ 主程序 ============
 def main():
     """启动飞书机器人"""
-    global feishu_client
+    global feishu_client, worker_pool
 
     print("=" * 60)
     print("[Master Chen] 飞书前端启动")
+    print(f"[Master Chen] 配置: 最大并发={FEISHU_MAX_USERS}, 用户超时={FEISHU_USER_TIMEOUT}秒")
     print("=" * 60)
 
     # Step 1: 启动 server.py
@@ -296,9 +359,9 @@ def main():
         .app_secret(APP_SECRET) \
         .build()
 
-    # Step 3: 启动 Worker 线程
-    worker_thread = threading.Thread(target=worker, daemon=True)
-    worker_thread.start()
+    # Step 3: 初始化线程池
+    worker_pool = ThreadPoolExecutor(max_workers=FEISHU_MAX_USERS)
+    print(f"[Master Chen] 线程池初始化完成（最大线程数: {FEISHU_MAX_USERS}）")
 
     # Step 4: 启动飞书 WebSocket 长连接
     print("[Master Chen] 连接飞书 WebSocket...")
@@ -319,6 +382,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[Master Chen] 正在关闭...")
     finally:
+        worker_pool.shutdown(wait=True)
         stop_server()
         print("[Master Chen] 已退出")
 
