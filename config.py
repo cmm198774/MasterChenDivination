@@ -54,8 +54,8 @@ THREAD_POOL_SIZE = int(os.getenv("THREAD_POOL_SIZE", "20"))
 
 # 超时配置（秒）
 CHAT_TIMEOUT = int(os.getenv("CHAT_TIMEOUT", "120"))
-VOICE_TIMEOUT = int(os.getenv("VOICE_TIMEOUT", "60"))
+VOICE_TIMEOUT = int(os.getenv("VOICE_TIMEOUT", "120"))  # 增加到 120 秒，避免长文本超时
 
 # 飞书机器人并发配置
 FEISHU_MAX_USERS = int(os.getenv("FEISHU_MAX_USERS", "50"))  # 最大并发用户数
-FEISHU_USER_TIMEOUT = int(os.getenv("FEISHU_USER_TIMEOUT", "300"))  # 用户不活跃超时（秒）
+FEISHU_USER_TIMEOUT = int(os.getenv("FEISHU_USER_TIMEOUT", "10"))  # 用户不活跃超时（秒）

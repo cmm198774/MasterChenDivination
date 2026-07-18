@@ -1,6 +1,4 @@
 import asyncio
-import os
-import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -23,6 +21,8 @@ from config import (
     SERVER_PORT,
     THREAD_POOL_SIZE,
 )
+from start_redis import start_redis_server, stop_redis_server
+
 # 全局 logger（启动阶段使用，清空之前的日志）
 global_logger = setup_global_logger(clear_previous_logs=True)
 
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
     # 启动 Redis 服务器
     global_logger.info("启动 Redis 服务器...")
-    subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-File", "start_redis.ps1"])
+    start_redis_server()
 
     # 创建 Master 实例（使用 RedisSaver）
     global_logger.info("创建 Master 实例...")
@@ -48,6 +48,10 @@ async def lifespan(app: FastAPI):
     global_logger.info("Master 实例创建完成")
 
     yield
+
+    # 关闭 Redis 服务器
+    global_logger.info("关闭 Redis 服务器...")
+    stop_redis_server()
     global_logger.info("应用关闭")
 
 

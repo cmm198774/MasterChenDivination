@@ -21,6 +21,7 @@ logs/
 
 # Redis
 redis-server/
+redis_cache/
 
 # IDE
 .vscode/
@@ -35,10 +36,8 @@ html/
 
 # 测试脚本（可选，如果需要也可以上传）
 # test_scripts/
-dump.rdb
 .trae/
 课件/
-*.rdb
 test_scripts/
 feishu_bot.py
 docs/

@@ -18,6 +18,10 @@ import os
 import sys
 import ssl
 
+# 强制 stdout 不缓冲，确保日志实时显示
+if sys.stdout:
+    sys.stdout.reconfigure(line_buffering=True)
+
 # 修复 Windows SSL 证书问题：跳过损坏的 Windows 证书存储，使用 certifi 证书
 if sys.platform == "win32":
     try:
@@ -57,6 +61,7 @@ from config import (
 )
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from start_redis import stop_redis_by_command
 
 # ============ 配置 ============
 APP_ID = FEISHU_APP_ID
@@ -92,7 +97,7 @@ def start_server():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    print(f"[Master Chen] server.py 已启动 (PID: {server_process.pid})")
+    print(f"[Master Chen] server.py 已启动 (PID: {server_process.pid})", flush=True)
 
     # 等待服务器就绪
     for i in range(20):
@@ -100,18 +105,18 @@ def start_server():
         try:
             resp = requests.get(f"{SERVER_URL}/", timeout=2)
             if resp.status_code == 200:
-                print("[Master Chen] server.py 已就绪")
+                print("[Master Chen] server.py 已就绪", flush=True)
                 return True
         except Exception:
             pass
-        print(f"[Master Chen] 等待 server.py 启动... ({i+1}/20)")
+        print(f"[Master Chen] 等待 server.py 启动... ({i+1}/20)", flush=True)
 
-    print("[Master Chen] server.py 启动超时")
+    print("[Master Chen] server.py 启动超时", flush=True)
     return False
 
 
 def stop_server():
-    """停止 server.py 子进程"""
+    """停止 server.py 子进程和 Redis"""
     global server_process
     if server_process:
         server_process.terminate()
@@ -119,8 +124,11 @@ def stop_server():
             server_process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             server_process.kill()
-        print("[Master Chen] server.py 已停止")
+        print("[Master Chen] server.py 已停止", flush=True)
         server_process = None
+
+    # 同时关闭 Redis 服务器
+    stop_redis_by_command()
 
 
 # ============ 音频处理 ============
@@ -146,7 +154,7 @@ def upload_audio_to_feishu(opus_data: bytes, filename: str) -> str:
     if response.success():
         return response.data.file_key
     else:
-        print(f"[Master Chen] 上传音频失败: {response.code} - {response.msg}")
+        print(f"[Master Chen] 上传音频失败: {response.code} - {response.msg}", flush=True)
         return None
 
 
@@ -167,9 +175,9 @@ def send_audio_to_feishu(sender_id: str, file_key: str):
 
     response = feishu_client.im.v1.message.create(request)
     if response.success():
-        print(f"[Master Chen] 音频消息发送成功")
+        print(f"[Master Chen] 音频消息发送成功", flush=True)
     else:
-        print(f"[Master Chen] 发送音频失败: {response.code} - {response.msg}")
+        print(f"[Master Chen] 发送音频失败: {response.code} - {response.msg}", flush=True)
 
 
 def send_text_to_feishu(sender_id: str, text: str):
@@ -189,15 +197,15 @@ def send_text_to_feishu(sender_id: str, text: str):
 
     response = feishu_client.im.v1.message.create(request)
     if response.success():
-        print(f"[Master Chen] 文本消息发送成功")
+        print(f"[Master Chen] 文本消息发送成功", flush=True)
     else:
-        print(f"[Master Chen] 发送文本失败: {response.code} - {response.msg}")
+        print(f"[Master Chen] 发送文本失败: {response.code} - {response.msg}", flush=True)
 
 
 # ============ 消息处理 ============
 def process_message(sender_id: str, text: str):
     """处理单条消息的完整流程"""
-    print(f"\n[Master Chen] 处理消息: sender={sender_id}, text={text[:50]}...")
+    print(f"\n[Master Chen] 处理消息: sender={sender_id}, text={text[:50]}...", flush=True)
 
     # Step 1: POST /chat
     try:
@@ -219,7 +227,7 @@ def process_message(sender_id: str, text: str):
 
     # Step 3: 获取音频
     if not voice_id:
-        print("[Master Chen] 没有 voice_id，跳过音频")
+        print("[Master Chen] 没有 voice_id，跳过音频", flush=True)
         return
 
     try:
@@ -233,21 +241,21 @@ def process_message(sender_id: str, text: str):
             timeout=VOICE_TIMEOUT + 10,
         )
         if audio_resp.status_code != 200:
-            print(f"[Master Chen] 获取音频失败: HTTP {audio_resp.status_code}")
+            print(f"[Master Chen] 获取音频失败: HTTP {audio_resp.status_code}", flush=True)
             return
 
         wav_data = audio_resp.content
-        print(f"[Master Chen] 获取音频: {len(wav_data)} bytes")
+        print(f"[Master Chen] 获取音频: {len(wav_data)} bytes", flush=True)
     except Exception as e:
-        print(f"[Master Chen] 获取音频异常: {e}")
+        print(f"[Master Chen] 获取音频异常: {e}", flush=True)
         return
 
     # Step 4: 转换 WAV → OPUS
     try:
         opus_data = convert_wav_to_opus(wav_data)
-        print(f"[Master Chen] 转换完成: {len(opus_data)} bytes")
+        print(f"[Master Chen] 转换完成: {len(opus_data)} bytes", flush=True)
     except Exception as e:
-        print(f"[Master Chen] 音频转换失败: {e}")
+        print(f"[Master Chen] 音频转换失败: {e}", flush=True)
         return
 
     # Step 5: 上传并发送音频
@@ -261,7 +269,7 @@ def user_worker(sender_id: str):
     用户专属 Worker：处理单个用户的所有消息
     保证同一用户的消息按顺序处理
     """
-    print(f"[Master Chen] 用户 Worker 启动: {sender_id[:10]}...")
+    print(f"[Master Chen] 用户 Worker 启动: {sender_id[:10]}...", flush=True)
 
     while True:
         try:
@@ -280,7 +288,7 @@ def user_worker(sender_id: str):
 
         except queue.Empty:
             # 超时，清理该用户的 Worker
-            print(f"[Master Chen] 用户不活跃，清理 Worker: {sender_id[:10]}...")
+            print(f"[Master Chen] 用户不活跃，清理 Worker: {sender_id[:10]}...", flush=True)
             with user_processing_lock:
                 if sender_id in active_workers:
                     active_workers.remove(sender_id)
@@ -291,7 +299,7 @@ def user_worker(sender_id: str):
             break
 
         except Exception as e:
-            print(f"[Master Chen] 用户 Worker 异常: {sender_id[:10]}... - {e}")
+            print(f"[Master Chen] 用户 Worker 异常: {sender_id[:10]}... - {e}", flush=True)
 
 
 # ============ 飞书事件处理 ============
@@ -313,14 +321,14 @@ def on_message_event(data: P2ImMessageReceiveV1) -> None:
     if not text:
         return
 
-    print(f"[Master Chen] 收到消息: sender={sender_id[:10]}..., text={text[:50]}...")
+    print(f"[Master Chen] 收到消息: sender={sender_id[:10]}..., text={text[:50]}...", flush=True)
 
     # 检查并发限制
     with user_processing_lock:
         current_users = len(active_workers)
 
     if current_users >= FEISHU_MAX_USERS:
-        print(f"[Master Chen] 并发已满（{current_users}/{FEISHU_MAX_USERS}），消息被丢弃")
+        print(f"[Master Chen] 并发已满（{current_users}/{FEISHU_MAX_USERS}），消息被丢弃", flush=True)
         send_text_to_feishu(sender_id, "当前用户太多，请稍后再试")
         return
 
@@ -332,7 +340,7 @@ def on_message_event(data: P2ImMessageReceiveV1) -> None:
 
             # 提交到线程池
             worker_pool.submit(user_worker, sender_id)
-            print(f"[Master Chen] 启动用户 Worker: {sender_id[:10]}... (当前并发: {len(active_workers)})")
+            print(f"[Master Chen] 启动用户 Worker: {sender_id[:10]}... (当前并发: {len(active_workers)})", flush=True)
 
     # 放入该用户的队列
     user_queues[sender_id].put(text)
@@ -344,13 +352,13 @@ def main():
     global feishu_client, worker_pool
 
     print("=" * 60)
-    print("[Master Chen] 飞书前端启动")
-    print(f"[Master Chen] 配置: 最大并发={FEISHU_MAX_USERS}, 用户超时={FEISHU_USER_TIMEOUT}秒")
+    print("[Master Chen] 飞书前端启动", flush=True)
+    print(f"[Master Chen] 配置: 最大并发={FEISHU_MAX_USERS}, 用户超时={FEISHU_USER_TIMEOUT}秒", flush=True)
     print("=" * 60)
 
     # Step 1: 启动 server.py
     if not start_server():
-        print("[Master Chen] server.py 启动失败，退出")
+        print("[Master Chen] server.py 启动失败，退出", flush=True)
         return
 
     # Step 2: 创建飞书客户端
@@ -361,10 +369,10 @@ def main():
 
     # Step 3: 初始化线程池
     worker_pool = ThreadPoolExecutor(max_workers=FEISHU_MAX_USERS)
-    print(f"[Master Chen] 线程池初始化完成（最大线程数: {FEISHU_MAX_USERS}）")
+    print(f"[Master Chen] 线程池初始化完成（最大线程数: {FEISHU_MAX_USERS}）", flush=True)
 
     # Step 4: 启动飞书 WebSocket 长连接
-    print("[Master Chen] 连接飞书 WebSocket...")
+    print("[Master Chen] 连接飞书 WebSocket...", flush=True)
 
     event_handler = lark.EventDispatcherHandler.builder("", "") \
         .register_p2_im_message_receive_v1(on_message_event) \
@@ -380,11 +388,11 @@ def main():
     try:
         ws_client.start()
     except KeyboardInterrupt:
-        print("\n[Master Chen] 正在关闭...")
+        print("\n[Master Chen] 正在关闭...", flush=True)
     finally:
         worker_pool.shutdown(wait=True)
         stop_server()
-        print("[Master Chen] 已退出")
+        print("[Master Chen] 已退出", flush=True)
 
 
 if __name__ == "__main__":
