@@ -4,8 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from langchain_core.messages import HumanMessage
+from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 import uvicorn
 from sys_logger import setup_global_logger
 from MyTools import add_urls_to_db
@@ -20,6 +22,8 @@ from config import (
     SERVER_HOST,
     SERVER_PORT,
     THREAD_POOL_SIZE,
+    LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY,
 )
 from start_redis import start_redis_server, stop_redis_server
 
@@ -85,8 +89,16 @@ class Master:
         # 用 graph.invoke 调用（情绪检测在 graph 内部自动完成）
         global_logger.debug(f"[{user_id}] 开始 agent 推理...")
 
-        # 添加 config 参数，指定 thread_id
+        # 构建 config：thread_id + Langfuse 监控
         config = {"configurable": {"thread_id": user_id}}
+
+        # Langfuse 监控：如果配置了密钥，则启用
+        if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+            try:
+                langfuse_handler = LangfuseCallbackHandler()
+                config["callbacks"] = [langfuse_handler]
+            except Exception as e:
+                global_logger.warning(f"Langfuse 初始化失败: {e}")
 
         # 添加 system prompt 作为第一条消息（只在第一次对话时添加）
         # MemorySaver 会保存历史，所以后续对话会自动包含之前的消息
@@ -153,9 +165,6 @@ async def get_audio(voice_id: str, text: str, mood: str = "default"):
     Returns:
         Response: 音频数据（WAV 格式）
     """
-    from fastapi.responses import Response
-    from fastapi import HTTPException
-
     global_logger.info(f"生成音频: voice_id={voice_id}, mood={mood}, text={text[:50]}...")
 
     # 在线程池中执行同步的 get_voice()

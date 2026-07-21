@@ -4,6 +4,7 @@ Redis 服务器管理模块
 """
 import atexit
 import os
+import socket
 import subprocess
 import time
 
@@ -22,7 +23,6 @@ def start_redis_server():
     global _redis_process
 
     # 检查是否已有 Redis 在运行（通过连接测试）
-    import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.settimeout(1)

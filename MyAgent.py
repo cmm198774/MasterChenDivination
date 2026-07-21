@@ -4,6 +4,7 @@
 """
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TypedDict, Annotated, List, Sequence, Optional
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage, AIMessage, SystemMessage, ToolMessage, HumanMessage
@@ -386,7 +387,6 @@ def create_agent_graph(
             dict: 包含工具执行结果的状态更新
         """
         user_id = (config or {}).get("configurable", {}).get("thread_id", "?")
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         messages = list(state["messages"])
         last_msg = messages[-1] if messages else None

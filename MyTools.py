@@ -13,20 +13,25 @@ if sys.platform == "win32":
     if hasattr(ssl.SSLContext, "_load_windows_store_certs"):
         ssl.SSLContext._load_windows_store_certs = lambda self, storename, purpose: None
 
+import io
+import re
+import dashscope
 import requests
+from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 from langchain_community.vectorstores import Qdrant
+from langchain_community.embeddings import DashScopeEmbeddings
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.documents import Document
+from langchain_openai import ChatOpenAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydub import AudioSegment
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
-from langchain_community.embeddings import DashScopeEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
-from langchain_community.document_loaders import WebBaseLoader
 from typing import List
-from langchain_core.documents import Document
 from sys_logger import setup_global_logger
-from bs4 import BeautifulSoup
 from config import (
     DASHSCOPE_API_KEY,
     BAIDU_AI_SEARCH_API_KEY,
@@ -146,8 +151,6 @@ def add_urls_to_db(urls: List[str], collection_name: str = "yunshi_2026") -> dic
             - failed: List[dict] 失败的 URL 及原因
             - total_chunks: int 总文本块数
     """
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-
     logger.info(f"开始处理 {len(urls)} 个 URL，目标 collection: {collection_name}")
 
     # 配置文本块大小和重叠
@@ -411,7 +414,6 @@ def jiemeng(query:str) -> str:
 # 将长文本按句子边界切分为不超过 max_len 的片段
 def _split_text_for_tts(text: str, max_len: int = 500) -> list[str]:
     """将长文本按句子边界切分为不超过 max_len 的片段"""
-    import re
     if len(text) <= max_len:
         return [text]
     # 按句号、感叹号、问号、换行切分
@@ -438,7 +440,6 @@ def _split_text_for_tts(text: str, max_len: int = 500) -> list[str]:
 # 调用一次 Qwen3-TTS API，返回音频 bytes
 def _call_tts(text: str, voice: str, instruction: str | None) -> bytes | None:
     """调用一次 Qwen3-TTS API，返回音频 bytes"""
-    import dashscope
     params = {
         "model": TTS_MODEL,
         "api_key": DASHSCOPE_API_KEY,
@@ -481,9 +482,6 @@ def get_voice(text: str, mood: str, voice: str = TTS_VOICE) -> bytes:
     Returns:
         audio bytes (WAV format)
     """
-    from pydub import AudioSegment
-    import io
-
     # # 禁用代理
     # for key in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     #     os.environ.pop(key, None)

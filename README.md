@@ -12,6 +12,8 @@
 - **飞书多用户并行**：每个用户独立队列，保证消息顺序的同时实现并行处理
 - **对话历史隔离**：基于 Redis 的用户状态管理，不同用户的对话互不干扰
 - **自动资源清理**：不活跃用户自动释放资源，防止内存泄漏
+- **Redis 自动管理**：服务启动时自动启动 Redis，关闭时自动停止
+- **LLM 调用监控**：集成 Langfuse，自动记录模型调用链路、Token 用量和耗时
 
 ## 项目结构
 
@@ -27,8 +29,12 @@ MasterChenDivination/
 ├── feishu_bot.py              # 飞书机器人（备用）
 ├── sys_logger.py              # 日志模块
 ├── sys_memory.py              # Redis 持久化模块（支持多用户隔离）
-├── start_redis.ps1            # Redis 启动脚本
+├── start_redis.py             # Redis 自动管理模块（启动/停止）
+├── langfuse/                  # Langfuse 监控（Docker 部署）
+│   ├── docker-compose.yml     # Docker 编排文件
+│   └── .env                   # Langfuse 环境变量
 ├── local_qdrant/              # Qdrant 向量数据库（首次运行自动创建）
+├── redis_cache/               # Redis 数据目录
 ├── logs/                      # 日志目录（自动创建）
 ├── docs/                      # 设计文档
 │   ├── custom/                # 自定义文档
@@ -79,7 +85,15 @@ cp .env.example .env
 | `FEISHU_MAX_USERS` | 50 | 飞书最大并发用户数 |
 | `FEISHU_USER_TIMEOUT` | 300 | 用户不活跃超时时间（秒） |
 | `CHAT_TIMEOUT` | 120 | 对话请求超时时间（秒） |
-| `VOICE_TIMEOUT` | 60 | 语音生成超时时间（秒） |
+| `VOICE_TIMEOUT` | 120 | 语音生成超时时间（秒） |
+
+Langfuse 监控配置（可选）：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `LANGFUSE_PUBLIC_KEY` | 空 | Langfuse 公钥（从 Web 界面获取） |
+| `LANGFUSE_SECRET_KEY` | 空 | Langfuse 私钥（从 Web 界面获取） |
+| `LANGFUSE_HOST` | http://localhost:3000 | Langfuse 服务地址 |
 
 ### 2. 安装依赖
 
@@ -87,17 +101,45 @@ cp .env.example .env
 conda create -n py310 python=3.10
 conda activate py310
 pip install fastapi uvicorn langchain langgraph qdrant-client \
-    dashscope python-dotenv pydub lark-oapi requests beautifulsoup4
+    dashscope python-dotenv pydub lark-oapi requests beautifulsoup4 langfuse
 ```
 
 ### 3. 启动 Redis
 
-```bash
-# Windows
-powershell -ExecutionPolicy Bypass -File start_redis.ps1
+Redis 会在服务启动时自动启动，无需手动操作。
 
-# 或手动启动
-redis-server.exe
+如需手动管理：
+```bash
+# 自动启动（推荐）
+python server.py  # Redis 会自动启动
+
+# 手动启动
+python -c "from start_redis import start_redis_server; start_redis_server()"
+
+# 手动停止
+python -c "from start_redis import stop_redis_server; stop_redis_server()"
+```
+
+### 4. Langfuse 监控（可选）
+
+用于监控 LLM 调用链路、Token 用量和耗时分析。
+
+```bash
+# 1. 确保 Docker Desktop 已启动
+
+# 2. 启动 Langfuse
+cd langfuse
+docker compose up -d
+
+# 3. 打开浏览器访问 http://localhost:3000
+#    注册账号 → 创建项目 → 获取 API Keys
+
+# 4. 将密钥填入项目根目录的 .env 文件：
+#    LANGFUSE_PUBLIC_KEY=pk-...
+#    LANGFUSE_SECRET_KEY=sk-...
+#    LANGFUSE_HOST=http://localhost:3000
+
+# 5. 启动服务即可自动上报监控数据
 ```
 
 ## 使用方式
