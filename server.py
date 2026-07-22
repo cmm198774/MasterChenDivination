@@ -28,7 +28,14 @@ from config import (
 from start_redis import start_redis_server, stop_redis_server
 
 # 全局 logger（启动阶段使用，清空之前的日志）
-global_logger = setup_global_logger(clear_previous_logs=True)
+# Docker 环境只输出到控制台，本地同时输出到文件
+import os
+_in_docker = os.path.exists("/.dockerenv")
+global_logger = setup_global_logger(
+    log_to_file=not _in_docker,
+    log_to_console=True,
+    clear_previous_logs=not _in_docker,
+)
 
 # 全局 Master 实例
 master_instance = None

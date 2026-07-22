@@ -40,7 +40,8 @@ from config import (
     LLM_BASE_URL,
     LLM_MODEL_NAME,
     EMBEDDING_MODEL,
-    QDRANT_BASE_DIR,
+    QDRANT_HOST,
+    QDRANT_PORT,
     QDRANT_COLLECTION,
     TTS_MODEL,
     TTS_VOICE,
@@ -74,7 +75,13 @@ _qdrant_client = None
 def _get_retriever(file_name: str ) -> Qdrant:
     global _retriever, _qdrant_client
     if _retriever is None:
-        _qdrant_client = QdrantClient(path=QDRANT_BASE_DIR, prefer_grpc=False)
+        # Docker 环境使用 URL 连接，本地使用本地路径
+        import os
+        if os.path.exists("/.dockerenv"):
+            _qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, prefer_grpc=False)
+        else:
+            from config import QDRANT_BASE_DIR
+            _qdrant_client = QdrantClient(path=QDRANT_BASE_DIR, prefer_grpc=False)
         store = Qdrant(
             _qdrant_client,
             file_name,
@@ -163,8 +170,13 @@ def add_urls_to_db(urls: List[str], collection_name: str = "yunshi_2026") -> dic
         dashscope_api_key=DASHSCOPE_API_KEY,
     )
 
-    # 初始化 Qdrant 客户端
-    qdrant_client = QdrantClient(path=QDRANT_BASE_DIR, prefer_grpc=False)
+    # 初始化 Qdrant 客户端（Docker 环境使用 URL 连接，本地使用本地路径）
+    import os
+    if os.path.exists("/.dockerenv"):
+        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, prefer_grpc=False)
+    else:
+        from config import QDRANT_BASE_DIR
+        qdrant_client = QdrantClient(path=QDRANT_BASE_DIR, prefer_grpc=False)
 
     # 初始化文本分割器
     text_splitter = RecursiveCharacterTextSplitter(

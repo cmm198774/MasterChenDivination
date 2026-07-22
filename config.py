@@ -27,7 +27,8 @@ FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
 # ==========================================
 # 服务配置
 # ==========================================
-SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+# Docker 环境绑定 0.0.0.0，本地绑定 127.0.0.1
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0" if os.path.exists("/.dockerenv") else "127.0.0.1")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 
 # LLM 模型配置
@@ -44,10 +45,16 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
 
 # Qdrant 向量数据库
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "yunshi_2026")
+# Docker 环境使用容器名，本地使用 localhost
+QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant" if os.path.exists("/.dockerenv") else "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_qdrand")
 
 # Redis 配置
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+# Docker 环境使用容器名，本地使用 localhost
+REDIS_HOST = os.getenv("REDIS_HOST", "redis" if os.path.exists("/.dockerenv") else "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 
 # 线程池配置
 THREAD_POOL_SIZE = int(os.getenv("THREAD_POOL_SIZE", "20"))

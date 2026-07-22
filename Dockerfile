@@ -24,5 +24,5 @@ RUN mkdir -p /app/local_qdrant /app/redis_cache /app/logs
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令
-CMD ["python", "server.py"]
+# 启动命令（feishu_master_chen.py 会启动 server.py 子进程）
+CMD ["python", "feishu_master_chen.py"]

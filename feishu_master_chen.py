@@ -95,7 +95,7 @@ def start_server():
         [sys.executable, server_script],
         cwd=project_dir,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # 合并 stderr 到 stdout
     )
     print(f"[Master Chen] server.py 已启动 (PID: {server_process.pid})", flush=True)
 

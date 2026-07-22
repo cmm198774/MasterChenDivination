@@ -8,32 +8,25 @@ services:
     container_name: master-chen-app
     ports:
       - "8000:8000"
-    environment:
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_HOST=http://langfuse-web:3000
+    env_file:
+      - .env
     depends_on:
       redis:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
-    volumes:
-      # 挂载配置文件（敏感信息不打包进镜像）
-      - ./.env:/app/.env:ro
-      # 持久化数据
-      - ./local_qdrant:/app/local_qdrant
-      - ./redis_cache:/app/redis_cache
-      - ./logs:/app/logs
+        condition: service_started
+    # 不映射文件到本地，避免互相干扰
     restart: unless-stopped
 
   # ============ Redis ============
   redis:
     image: docker.io/redis:7
     container_name: master-chen-redis
-    ports:
-      - "127.0.0.1:6379:6379"
+    # 不映射端口到本地，避免与本地 Redis 冲突
+    # 应用容器通过 Docker 网络（redis://redis:6379）访问
+    # 使用 Docker volume 持久化，不映射到本地
     volumes:
-      - ./redis_cache:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -45,10 +38,11 @@ services:
   qdrant:
     image: docker.io/qdrant/qdrant:latest
     container_name: master-chen-qdrant
-    ports:
-      - "127.0.0.1:6333:6333"
+    # 不映射端口到本地，避免与本地 Qdrant 冲突
+    # 应用容器通过 Docker 网络（http://qdrant:6333）访问
+    # 使用 Docker volume 持久化，不映射到本地
     volumes:
-      - ./local_qdrant:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 10s
@@ -74,3 +68,7 @@ services:
   #   extends:
   #     file: ./langfuse/docker-compose.yml
   #     service: minio
+
+volumes:
+  redis_data:
+  qdrant_data:
