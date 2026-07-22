@@ -30,6 +30,9 @@ redis_cache/
 .vscode/
 .idea/
 
+# Claude Code
+.claude/
+
 # 操作系统
 .DS_Store
 Thumbs.db
