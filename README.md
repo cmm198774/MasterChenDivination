@@ -247,7 +247,15 @@ python feishu_master_chen.py
 
 ## Docker 部署（推荐）
 
-使用 Docker 一键启动所有服务（应用 + Redis + Qdrant）。
+使用 Docker 完全隔离部署，本地开发环境不受影响。
+
+### 优势
+
+- ✅ **完全隔离** - 容器独立运行，不映射文件到本地
+- ✅ **一键启动** - `docker compose up` 启动所有服务
+- ✅ **自动适配** - 代码自动检测 Docker 环境，选择正确配置
+- ✅ **数据持久化** - 使用 Docker named volumes，数据安全
+- ✅ **端口隔离** - 内部服务（Redis/Qdrant）不映射，避免冲突
 
 ### 快速启动
 
@@ -255,7 +263,8 @@ python feishu_master_chen.py
 # 1. 确保 Docker Desktop 已启动
 
 # 2. 配置环境变量
-cp .env.example .env  # 或手动创建 .env，填写 API 密钥
+cp .env.example .env  # 复制模板
+# 编辑 .env，填写 API 密钥（不要修改 SERVER_HOST/REDIS_HOST 等，代码会自动选择）
 
 # 3. 构建并启动
 docker compose up -d
@@ -267,20 +276,99 @@ docker compose logs -f app
 docker compose down
 ```
 
+### 服务架构
+
+```
+┌─────────────────────────────────────────┐
+│           Docker Network                │
+│                                         │
+│  ┌──────────────┐    ┌──────────────┐  │
+│  │  app:8000    │───▶│ redis:6379   │  │
+│  │  (主应用)     │    │ (内部访问)    │  │
+│  └──────────────┘    └──────────────┘  │
+│         │                               │
+│         ├──▶ qdrant:6333 (内部访问)     │
+│         │                               │
+└─────────┼───────────────────────────────┘
+          │ 端口映射 8000:8000
+          ▼
+    宿主机 localhost:8000
+```
+
 ### 服务端口
 
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| App | 8000 | 主应用 |
-| Redis | 6379 | 缓存（仅本地访问） |
-| Qdrant | 6333 | 向量数据库（仅本地访问） |
+| 服务 | 容器端口 | 宿主机映射 | 说明 |
+|------|----------|------------|------|
+| App | 8000 | 8000 | 主应用（飞书 WebSocket 出站） |
+| Redis | 6379 | ❌ 不映射 | 容器内访问（`redis://redis:6379`） |
+| Qdrant | 6333 |  不映射 | 容器内访问（`http://qdrant:6333`） |
 
 ### 数据持久化
 
-以下目录会挂载到容器外，数据不会丢失：
-- `./local_qdrant/` — 向量数据库
-- `./redis_cache/` — Redis 数据
-- `./logs/` — 日志
+使用 Docker named volumes，数据存储在 Docker 管理的卷中：
+
+| Volume | 用途 | 查看命令 |
+|--------|------|----------|
+| `redis_data` | Redis 数据 | `docker volume inspect redis_data` |
+| `qdrant_data` | Qdrant 向量库 | `docker volume inspect qdrant_data` |
+
+**优势：** 本地看不到这些文件，避免版本冲突和数据损坏。
+
+### 环境变量配置
+
+`.env` 文件只需填写密钥和端口，**不要填写主机名**（代码会自动检测）：
+
+```env
+# ✅ 需要填写
+DASHSCOPE_API_KEY=sk-xxx
+LLM_API_KEY=sk-yyy
+FEISHU_APP_ID=cli_xxx
+SERVER_PORT=8000
+
+# ❌ 不要填写（让代码自动选择）
+# SERVER_HOST=127.0.0.1
+# REDIS_URL=redis://localhost:6379
+```
+
+**自动检测逻辑：**
+```python
+# Docker 环境
+SERVER_HOST = "0.0.0.0"  # 接受外部请求
+REDIS_HOST = "redis"     # Docker 网络名
+
+# 本地环境
+SERVER_HOST = "127.0.0.1"  # 只接受本地请求
+REDIS_HOST = "localhost"   # 本地回环
+```
+
+### 常用命令
+
+```bash
+# 启动
+docker compose up -d
+
+# 查看日志
+docker logs -f master-chen-app
+docker logs --tail 100 master-chen-app
+
+# 进入容器
+docker exec -it master-chen-app bash
+
+# 检查环境变量
+docker exec master-chen-app env | grep SERVER
+
+# 强制重建（代码更新后）
+docker compose up --build -d
+
+# 完全清理（删除数据卷）
+docker compose down -v
+
+# 查看端口映射
+docker port master-chen-app
+
+# 查看容器状态
+docker ps
+```
 
 ### 启用 Langfuse 监控
 
@@ -291,6 +379,10 @@ docker compose down
     extends:
       file: ./langfuse/docker-compose.yml
       service: langfuse-web
+  langfuse-worker:
+    extends:
+      file: ./langfuse/docker-compose.yml
+      service: langfuse-worker
   # ... 其他 Langfuse 服务
 ```
 
@@ -299,3 +391,31 @@ docker compose down
 docker compose down
 docker compose up -d
 ```
+
+访问 `http://localhost:3000` 注册账号并获取 API Keys，填入 `.env`。
+
+### 本地开发 vs Docker 部署
+
+| 场景 | 运行方式 | 数据库 | Redis |
+|------|----------|--------|-------|
+| 本地开发 | `python feishu_master_chen.py` | 本地 Qdrant（`./local_qdrant`） | 本地 Redis（`localhost:6379`） |
+| Docker 部署 | `docker compose up -d` | 容器内 Qdrant（named volume） | 容器内 Redis（named volume） |
+
+**完全隔离：** 本地和 Docker 可以同时运行，互不干扰。
+
+### 故障排查
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| 容器启动失败 | 缺少依赖 | `docker compose build --no-cache` |
+| localhost 访问不了 | SERVER_HOST 配置错误 | 删除 `.env` 中的 `SERVER_HOST` |
+| 端口冲突 | 本地 Redis 占用 6379 | Docker Redis 不映射端口，无冲突 |
+| 数据版本冲突 | 共享了数据目录 | 使用 named volumes，不映射本地 |
+| 代码不更新 | 用了缓存镜像 | `docker compose build --no-cache` |
+
+### 注意事项
+
+- **`.env` 文件包含敏感信息，不要上传到 GitHub**（已加入 `.gitignore`）
+- Docker 容器内使用 `redis://redis:6379` 和 `http://qdrant:6333` 访问内部服务
+- 飞书 WebSocket 是出站连接，不需要额外配置端口
+- 日志输出到标准输出，用 `docker logs` 查看
