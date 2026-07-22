@@ -244,3 +244,58 @@ python feishu_master_chen.py
 - **对话历史隔离**：基于 Redis 的 `thread_id` 机制，每个用户的对话历史独立存储
 - **日志标识**：所有日志都包含 `[{user_id}]` 前缀，方便调试和追踪
 - **资源管理**：自动清理不活跃用户，防止内存泄漏
+
+## Docker 部署（推荐）
+
+使用 Docker 一键启动所有服务（应用 + Redis + Qdrant）。
+
+### 快速启动
+
+```bash
+# 1. 确保 Docker Desktop 已启动
+
+# 2. 配置环境变量
+cp .env.example .env  # 或手动创建 .env，填写 API 密钥
+
+# 3. 构建并启动
+docker compose up -d
+
+# 4. 查看日志
+docker compose logs -f app
+
+# 5. 停止服务
+docker compose down
+```
+
+### 服务端口
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| App | 8000 | 主应用 |
+| Redis | 6379 | 缓存（仅本地访问） |
+| Qdrant | 6333 | 向量数据库（仅本地访问） |
+
+### 数据持久化
+
+以下目录会挂载到容器外，数据不会丢失：
+- `./local_qdrant/` — 向量数据库
+- `./redis_cache/` — Redis 数据
+- `./logs/` — 日志
+
+### 启用 Langfuse 监控
+
+编辑 `docker-compose.yml`，取消 Langfuse 相关服务的注释：
+
+```yaml
+  langfuse-web:
+    extends:
+      file: ./langfuse/docker-compose.yml
+      service: langfuse-web
+  # ... 其他 Langfuse 服务
+```
+
+然后重启：
+```bash
+docker compose down
+docker compose up -d
+```

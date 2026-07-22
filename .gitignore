@@ -23,6 +23,9 @@ logs/
 redis-server/
 redis_cache/
 
+# Docker
+.docker/
+
 # IDE
 .vscode/
 .idea/
@@ -41,3 +44,6 @@ html/
 test_scripts/
 feishu_bot.py
 docs/
+
+# Langfuse 数据
+langfuse/.env

@@ -1,0 +1,76 @@
+# Master Chen 完整服务编排
+# 包含：应用 + Redis + Qdrant + Langfuse
+
+services:
+  # ============ Python 应用 ============
+  app:
+    build: .
+    container_name: master-chen-app
+    ports:
+      - "8000:8000"
+    environment:
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=http://langfuse-web:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    volumes:
+      # 挂载配置文件（敏感信息不打包进镜像）
+      - ./.env:/app/.env:ro
+      # 持久化数据
+      - ./local_qdrant:/app/local_qdrant
+      - ./redis_cache:/app/redis_cache
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # ============ Redis ============
+  redis:
+    image: docker.io/redis:7
+    container_name: master-chen-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./redis_cache:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============ Qdrant 向量数据库 ============
+  qdrant:
+    image: docker.io/qdrant/qdrant:latest
+    container_name: master-chen-qdrant
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./local_qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============ Langfuse 监控（可选）============
+  # 取消注释以下行启用 Langfuse
+  # langfuse-web:
+  #   extends:
+  #     file: ./langfuse/docker-compose.yml
+  #     service: langfuse-web
+  # langfuse-worker:
+  #   extends:
+  #     file: ./langfuse/docker-compose.yml
+  #     service: langfuse-worker
+  # clickhouse:
+  #   extends:
+  #     file: ./langfuse/docker-compose.yml
+  #     service: clickhouse
+  # minio:
+  #   extends:
+  #     file: ./langfuse/docker-compose.yml
+  #     service: minio
